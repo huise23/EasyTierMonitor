@@ -266,7 +266,7 @@ void CWorkerThread::SendNotification(const StatusSnapshot& snapshot)
     std::wstring message;
 
     // Detect disconnect: from connected state to disconnected state
-    bool was_connected = (current_status.status == ConnStatus::P2P ||
+    bool was_connected = (current_status.status == ConnStatus::Direct ||
                          current_status.status == ConnStatus::Relay);
     bool is_disconnected = (snapshot.status == ConnStatus::Disconnected ||
                            snapshot.status == ConnStatus::NotFound);
@@ -275,22 +275,22 @@ void CWorkerThread::SendNotification(const StatusSnapshot& snapshot)
     {
         should_notify = true;
         title = L"EasyTier Connection Lost";
-        message = L"Peer \"" + snapshot.peer_name + L"\" disconnected";
+        message = L"Connection to peer lost";
     }
 
     // Detect reconnect: from disconnected state to connected state
     bool was_disconnected = (current_status.status == ConnStatus::Disconnected ||
                             current_status.status == ConnStatus::NotFound);
-    bool is_connected = (snapshot.status == ConnStatus::P2P ||
+    bool is_connected = (snapshot.status == ConnStatus::Direct ||
                         snapshot.status == ConnStatus::Relay);
 
     if (was_disconnected && is_connected)
     {
         should_notify = true;
         title = L"EasyTier Connected";
-        message = L"Peer \"" + snapshot.peer_name + L"\" reconnected";
-        if (snapshot.status == ConnStatus::P2P)
-            message += L" (P2P)";
+        message = L"Connection to peer established";
+        if (snapshot.status == ConnStatus::Direct)
+            message += L" (Direct)";
         else if (snapshot.status == ConnStatus::Relay)
             message += L" (Relay)";
     }
