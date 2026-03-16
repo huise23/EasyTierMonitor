@@ -9,7 +9,7 @@ namespace EasyTierMonitor {
 
 CToastNotificationManager::CToastNotificationManager()
     : last_notification_time_(0)
-    , cooldown_minutes_(5)
+    , cooldown_minutes_(0)
     , enabled_(true)
 {
 }

@@ -73,7 +73,7 @@ struct PluginConfig
     PluginConfig()
         : update_interval_sec(5)
         , enable_notification(true)
-        , notification_cooldown_min(5)
+        , notification_cooldown_min(0)
         , ping_timeout_ms(500)
         , consecutive_failures_threshold(3)
         , cli_path(L"easytier-cli")
