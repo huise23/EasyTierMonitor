@@ -4,6 +4,7 @@
 #include "CliExecutor.h"
 #include "CliParser.h"
 #include "PingTester.h"
+#include "ToastNotificationManager.h"
 #include "DebugLog.h"
 #include <Windows.h>
 #include <chrono>
@@ -22,6 +23,7 @@ CWorkerThread::CWorkerThread()
 {
     cli_executor_ = std::make_unique<CCliExecutor>();
     ping_tester_ = std::make_unique<CPingTester>();
+    toast_manager_ = std::make_unique<CToastNotificationManager>();
 }
 
 CWorkerThread::~CWorkerThread()
@@ -42,6 +44,11 @@ void CWorkerThread::Start(CDataManager* data_manager, HWND notify_hwnd)
 
     // Initialize Ping tester
     ping_tester_->Initialize();
+
+    // Configure toast manager
+    const auto& config = data_manager_->GetConfig();
+    toast_manager_->Enable(config.enable_notification);
+    toast_manager_->SetCooldownMinutes(config.notification_cooldown_min);
 
     // Start thread
     thread_ = std::thread(&CWorkerThread::ThreadProc, this);
@@ -247,18 +254,10 @@ ConnStatus CWorkerThread::DetermineStatus(const PeerInfo* peer, int ping_ms)
 
 void CWorkerThread::SendNotification(const StatusSnapshot& snapshot)
 {
-    const auto& config = data_manager_->GetConfig();
     const auto& current_status = data_manager_->GetCurrentStatus();
 
     // Only notify on status change
     if (current_status.status == snapshot.status)
-        return;
-
-    // Check cooldown time
-    time_t now;
-    time(&now);
-
-    if (now - last_notification_time_ < config.notification_cooldown_min * 60)
         return;
 
     bool should_notify = false;
@@ -297,10 +296,7 @@ void CWorkerThread::SendNotification(const StatusSnapshot& snapshot)
 
     if (should_notify)
     {
-        // Show notification using MessageBox
-        MessageBoxW(nullptr, message.c_str(), title.c_str(),
-                   MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
-        last_notification_time_ = now;
+        toast_manager_->ShowNotification(title, message);
     }
 }
 

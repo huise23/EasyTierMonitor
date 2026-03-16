@@ -7,6 +7,7 @@
 #include "CliParser.h"
 #include "PingTester.h"
 #include "DataManager.h"
+#include "ToastNotificationManager.h"
 #include <thread>
 #include <atomic>
 #include <memory>
@@ -63,6 +64,7 @@ private:
     // CLI executor and Ping tester
     std::unique_ptr<CCliExecutor> cli_executor_;
     std::unique_ptr<CPingTester> ping_tester_;
+    std::unique_ptr<CToastNotificationManager> toast_manager_;
 
     // Custom message (for notifying main thread)
     static const UINT WM_UPDATE_STATUS = WM_USER + 100;

@@ -2,6 +2,7 @@
 #include "ToastNotificationManager.h"
 #include <fstream>
 #include <shlobj.h>
+#include <shellapi.h>
 #include <ctime>
 
 namespace EasyTierMonitor {
@@ -104,46 +105,31 @@ bool CToastNotificationManager::ShowNotification(const std::wstring& title, cons
     if (!CreateShortcut())
         return false;
 
-    // Windows 10+ uses Toast notifications
-    if (IsWindows10OrLater())
-    {
-        // Simplified implementation: use system tray balloon notification
-        NOTIFYICONDATAW nid = {0};
-        nid.cbSize = sizeof(NOTIFYICONDATAW);
-        nid.hWnd = nullptr;
-        nid.uID = 1;
-        nid.uFlags = NIF_INFO;
-        nid.dwInfoFlags = NIIF_INFO;
-        nid.uTimeout = 5000;
+    // Use system tray balloon notification (works on all Windows versions)
+    NOTIFYICONDATAW nid = {0};
+    nid.cbSize = sizeof(NOTIFYICONDATAW);
+    nid.hWnd = GetDesktopWindow(); // Use desktop window as fallback
+    nid.uID = 1001; // Unique ID for this notification
+    nid.uFlags = NIF_INFO | NIF_MESSAGE;
+    nid.dwInfoFlags = NIIF_INFO;
+    nid.uTimeout = 5000;
 
-        wcscpy_s(nid.szInfo, message.c_str());
-        wcscpy_s(nid.szInfoTitle, title.c_str());
+    wcscpy_s(nid.szInfo, message.c_str());
+    wcscpy_s(nid.szInfoTitle, title.c_str());
 
-        // Since we don't have a real window handle, this implementation is simplified
-        // Actual application should use main window handle provided by the plugin
-        // Shell_NotifyIconW(NIM_ADD, &nid);
+    // Try to add the notification icon
+    Shell_NotifyIconW(NIM_ADD, &nid);
 
-        // Record notification time
-        time(&last_notification_time_);
+    // Show the balloon notification
+    Shell_NotifyIconW(NIM_MODIFY, &nid);
 
-        return true;
-    }
-    else
-    {
-        // Windows 8 and earlier use message box
-        std::wstring full_message = message;
-        if (!peer_name.empty())
-        {
-            full_message = peer_name + L": " + message;
-        }
+    // Record notification time
+    time(&last_notification_time_);
 
-        MessageBoxW(nullptr, full_message.c_str(), title.c_str(), MB_OK | MB_ICONINFORMATION);
+    // Clean up after a delay (the notification will remain visible)
+    // We don't delete immediately to allow the notification to display
 
-        time(&last_notification_time_);
-        return true;
-    }
-
-    return false;
+    return true;
 }
 
 } // namespace EasyTierMonitor
