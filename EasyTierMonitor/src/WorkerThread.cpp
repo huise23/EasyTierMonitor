@@ -261,12 +261,45 @@ void CWorkerThread::SendNotification(const StatusSnapshot& snapshot)
     if (now - last_notification_time_ < config.notification_cooldown_min * 60)
         return;
 
-    // Only notify on disconnect (configurable)
-    if (snapshot.status == ConnStatus::Disconnected ||
-        snapshot.status == ConnStatus::NotFound)
+    bool should_notify = false;
+    std::wstring title;
+    std::wstring message;
+
+    // Detect disconnect: from connected state to disconnected state
+    bool was_connected = (current_status.status == ConnStatus::P2P ||
+                         current_status.status == ConnStatus::Relay);
+    bool is_disconnected = (snapshot.status == ConnStatus::Disconnected ||
+                           snapshot.status == ConnStatus::NotFound);
+
+    if (was_connected && is_disconnected)
     {
-        // TODO: Implement Windows Toast notification
-        // Currently using simple event log
+        should_notify = true;
+        title = L"EasyTier Connection Lost";
+        message = L"Peer \"" + snapshot.peer_name + L"\" disconnected";
+    }
+
+    // Detect reconnect: from disconnected state to connected state
+    bool was_disconnected = (current_status.status == ConnStatus::Disconnected ||
+                            current_status.status == ConnStatus::NotFound);
+    bool is_connected = (snapshot.status == ConnStatus::P2P ||
+                        snapshot.status == ConnStatus::Relay);
+
+    if (was_disconnected && is_connected)
+    {
+        should_notify = true;
+        title = L"EasyTier Connected";
+        message = L"Peer \"" + snapshot.peer_name + L"\" reconnected";
+        if (snapshot.status == ConnStatus::P2P)
+            message += L" (P2P)";
+        else if (snapshot.status == ConnStatus::Relay)
+            message += L" (Relay)";
+    }
+
+    if (should_notify)
+    {
+        // Show notification using MessageBox
+        MessageBoxW(nullptr, message.c_str(), title.c_str(),
+                   MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
         last_notification_time_ = now;
     }
 }
