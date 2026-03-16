@@ -1,0 +1,40 @@
+# Build outputs
+bin/
+obj/
+release/
+*.dll
+*.pdb
+*.lib
+*.exp
+*.iobj
+*.ipdb
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.sln.docstates
+*.vcxproj.filters
+*.vcxproj.user
+
+# Temporary files
+*.tmp
+*.log
+*.tlog
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code / OMC
+.claude/
+.omc/
+.spec-workflow/
+
+# Test repositories
+TrafficMonitor-repo/
+TrafficMonitorPlugins/

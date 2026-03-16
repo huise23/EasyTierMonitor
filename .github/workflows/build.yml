@@ -1,0 +1,58 @@
+name: Build EasyTierMonitor
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup Visual Studio environment
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+
+    - name: Restore NuGet packages
+      run: nuget restore EasyTierMonitor/EasyTierMonitor.sln
+
+    - name: Build solution
+      run: msbuild EasyTierMonitor/EasyTierMonitor.sln /p:Configuration=Release /p:Platform=x64 /m /v:minimal
+
+    - name: Create release directory
+      run: |
+        mkdir release
+        copy EasyTierMonitor\bin\x64\Release\EasyTierMonitor.dll release\
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: EasyTierMonitor-Release
+        path: release/EasyTierMonitor.dll
+
+    - name: Get version info
+      id: version
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release/EasyTierMonitor.dll
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
