@@ -1,4 +1,4 @@
-name: Build EasyTierMonitor
+name: Build Plugins
 
 on:
   push:
@@ -6,9 +6,77 @@ on:
   pull_request:
     branches: [ main, master, develop ]
   workflow_dispatch:
+    inputs:
+      module:
+        description: "Which module to build"
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - all
+          - easytier
+          - tailscale
 
 jobs:
-  build:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      easytier: ${{ steps.decide.outputs.easytier }}
+      tailscale: ${{ steps.decide.outputs.tailscale }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Detect changed modules
+      id: filter
+      uses: dorny/paths-filter@v3
+      with:
+        filters: |
+          easytier:
+            - 'EasyTierMonitor/**'
+          tailscale:
+            - 'TailscaleMonitor/**'
+
+    - name: Decide build targets
+      id: decide
+      shell: bash
+      run: |
+        module="${{ github.event.inputs.module || 'auto' }}"
+        easytier=false
+        tailscale=false
+
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          case "$module" in
+            all)
+              easytier=true
+              tailscale=true
+              ;;
+            easytier)
+              easytier=true
+              ;;
+            tailscale)
+              tailscale=true
+              ;;
+            auto|*)
+              easytier="${{ steps.filter.outputs.easytier }}"
+              tailscale="${{ steps.filter.outputs.tailscale }}"
+              ;;
+          esac
+        else
+          easytier="${{ steps.filter.outputs.easytier }}"
+          tailscale="${{ steps.filter.outputs.tailscale }}"
+        fi
+
+        echo "easytier=$easytier" >> "$GITHUB_OUTPUT"
+        echo "tailscale=$tailscale" >> "$GITHUB_OUTPUT"
+        echo "Build targets: easytier=$easytier tailscale=$tailscale"
+
+  build-easytier:
+    needs: detect
+    if: needs.detect.outputs.easytier == 'true'
     runs-on: windows-latest
 
     steps:
@@ -23,36 +91,53 @@ jobs:
       with:
         arch: x64
 
-    - name: Restore NuGet packages
+    - name: Restore NuGet packages (EasyTier)
       run: nuget restore EasyTierMonitor/EasyTierMonitor.sln
 
-    - name: Build solution
+    - name: Build EasyTier solution
       run: msbuild EasyTierMonitor/EasyTierMonitor.sln /p:Configuration=Release /p:Platform=x64 /m /v:minimal
 
-    - name: Create release directory
+    - name: Create release directory (EasyTier)
       run: |
-        mkdir release
-        copy EasyTierMonitor\bin\x64\Release\EasyTierMonitor.dll release\
+        mkdir release-easytier
+        copy EasyTierMonitor\bin\x64\Release\EasyTierMonitor.dll release-easytier\
 
-    - name: Upload artifact
+    - name: Upload EasyTier artifact
       uses: actions/upload-artifact@v4
       with:
         name: EasyTierMonitor-Release
-        path: release/EasyTierMonitor.dll
+        path: release-easytier/EasyTierMonitor.dll
 
-    - name: Get version info
-      id: version
-      if: startsWith(github.ref, 'refs/tags/')
-      run: |
-        echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-      shell: bash
+  build-tailscale:
+    needs: detect
+    if: needs.detect.outputs.tailscale == 'true'
+    runs-on: windows-latest
 
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup Visual Studio environment
+      uses: ilammy/msvc-dev-cmd@v1
       with:
-        files: release/EasyTierMonitor.dll
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        arch: x64
+
+    - name: Restore NuGet packages (Tailscale)
+      run: nuget restore TailscaleMonitor/TailscaleMonitor.sln
+
+    - name: Build Tailscale solution
+      run: msbuild TailscaleMonitor/TailscaleMonitor.sln /p:Configuration=Release /p:Platform=x64 /m /v:minimal
+
+    - name: Create release directory (Tailscale)
+      run: |
+        mkdir release-tailscale
+        copy TailscaleMonitor\bin\x64\Release\TailscaleMonitor.dll release-tailscale\
+
+    - name: Upload Tailscale artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TailscaleMonitor-Release
+        path: release-tailscale/TailscaleMonitor.dll

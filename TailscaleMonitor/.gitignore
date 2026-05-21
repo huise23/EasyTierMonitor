@@ -1,0 +1,55 @@
+# Build outputs
+bin/
+obj/
+*.obj
+*.o
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.meta
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.sln.docstates
+*.vcxproj.filters
+*.vcxproj.user
+
+# Resource files
+*.aps
+*.res
+*.rc.bak
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+*.swp
+*~
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# Encoding conversion scripts (dangerous)
+convert_encoding.*
+convert_encoding.rb
+build_debug.bat
+
+# Keep project files
+!EasyTierMonitor.sln
+!*.vcxproj
+!build.bat
