@@ -25,14 +25,20 @@ const wchar_t* CPluginItem::GetItemId() const
 
 const wchar_t* CPluginItem::GetItemLableText() const
 {
-    return L"";
+    return L"TS:";
 }
 
 const wchar_t* CPluginItem::GetItemValueText() const
 {
     if (!plugin_)
     {
-        cached_text_ = L"No Plugin";
+        cached_text_ = L"Plugin N/A";
+        return cached_text_.c_str();
+    }
+
+    if (!plugin_->HasCliPath())
+    {
+        cached_text_ = L"CLI Missing";
         return cached_text_.c_str();
     }
 
@@ -41,7 +47,7 @@ const wchar_t* CPluginItem::GetItemValueText() const
 
     if (peer_list.empty())
     {
-        cached_text_ = L"No Peers";
+        cached_text_ = L"No Peer Data";
         return cached_text_.c_str();
     }
 

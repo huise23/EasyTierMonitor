@@ -35,6 +35,8 @@ public:
     // Public accessor for PluginItem
     const std::vector<SimplePeerInfo>& GetPeerList() const { return peer_list_; }
     int GetCurrentPeerIndex() const { return current_peer_index_; }
+    bool HasCliPath() const { return !cli_path_.empty(); }
+    const std::wstring& GetCliPath() const { return cli_path_; }
     void AdvanceToNextPeer();
 
     // Configuration

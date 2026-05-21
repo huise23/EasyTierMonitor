@@ -65,23 +65,27 @@ std::wstring CTailscalePlugin::FindTailscaleCli()
 {
     DEBUG_LOG_INFO(L"Searching for tailscale.exe...");
 
-    // Default path
-    std::wstring default_path = L"C:\\Program Files\\tailscale-manager-pro\\resource\\tailscale.exe";
-    DEBUG_LOG_INFO(L"Checking default path: %s", default_path.c_str());
+    // Common install paths on Windows
+    const std::vector<std::wstring> candidates = {
+        L"C:\\Program Files\\Tailscale\\tailscale.exe",
+        L"C:\\Program Files (x86)\\Tailscale\\tailscale.exe",
+        L"C:\\Program Files\\tailscale-manager-pro\\resource\\tailscale.exe"
+    };
 
-    // Check if file exists
-    DWORD attrs = GetFileAttributesW(default_path.c_str());
-    if (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY))
+    for (const auto& candidate : candidates)
     {
-        DEBUG_LOG_INFO(L"Found at default path");
-        return default_path;
-    }
-    else
-    {
-        DEBUG_LOG_WARNING(L"Not found at default path (attrs=0x%08X)", attrs);
+        DEBUG_LOG_INFO(L"Checking path: %s", candidate.c_str());
+        DWORD attrs = GetFileAttributesW(candidate.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY))
+        {
+            DEBUG_LOG_INFO(L"Found tailscale.exe at: %s", candidate.c_str());
+            return candidate;
+        }
     }
 
-    return L"";
+    // Fallback to PATH resolution
+    DEBUG_LOG_WARNING(L"tailscale.exe not found in common locations, fallback to PATH");
+    return L"tailscale.exe";
 }
 
 void CTailscalePlugin::UpdatePeerList()
@@ -92,11 +96,12 @@ void CTailscalePlugin::UpdatePeerList()
     if (cli_path_.empty())
     {
         DEBUG_LOG_ERROR(L"CLI path is empty, cannot update peer list");
+        peer_list_.clear();
         return;
     }
 
-    // Execute tailscale peer command
-    std::wstring command = L"\"" + cli_path_ + L"\" peer";
+    // Execute tailscale status command (tailscale has no 'peer' subcommand)
+    std::wstring command = L"\"" + cli_path_ + L"\" status";
     DEBUG_LOG_INFO(L"Executing command: %s", command.c_str());
 
     SECURITY_ATTRIBUTES sa;
@@ -108,6 +113,7 @@ void CTailscalePlugin::UpdatePeerList()
     if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0))
     {
         DEBUG_LOG_ERROR(L"CreatePipe failed: %d", GetLastError());
+        peer_list_.clear();
         return;
     }
 
@@ -141,171 +147,68 @@ void CTailscalePlugin::UpdatePeerList()
 
         DEBUG_LOG_INFO(L"CLI output length: %d bytes", output.length());
 
-        // Log full output for debugging (split if too long)
-        if (!output.empty())
-        {
-            // Convert to wide string for logging
-            int wlen = MultiByteToWideChar(CP_UTF8, 0, output.c_str(), -1, NULL, 0);
-            if (wlen > 0)
-            {
-                std::vector<wchar_t> wbuf(wlen);
-                MultiByteToWideChar(CP_UTF8, 0, output.c_str(), -1, wbuf.data(), wlen);
-
-                // Log in chunks if needed
-                std::wstring full_output = wbuf.data();
-                size_t chunk_size = 1000;
-                for (size_t i = 0; i < full_output.length(); i += chunk_size)
-                {
-                    std::wstring chunk = full_output.substr(i, chunk_size);
-                    DEBUG_LOG_INFO(L"CLI output part %d: %s", i / chunk_size + 1, chunk.c_str());
-                }
-            }
-        }
-
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
 
-        // Parse table output
         if (!output.empty())
         {
+            // Minimal parser for `tailscale status` text:
+            // Keep only rows that start with a Tailscale IP and host, then map as peer list.
             std::istringstream iss(output);
             std::string line;
-            int line_num = 0;
-            std::string current_ip;
-            std::string current_hostname;
-
             while (std::getline(iss, line))
             {
-                line_num++;
-                // Skip header lines (first 2 lines)
-                if (line_num <= 2) continue;
-
-                // Skip empty lines
-                if (line.empty() || line.find_first_not_of(" \t\r\n|") == std::string::npos)
+                if (line.empty())
                     continue;
 
-                // Parse table row: | ipv4 | hostname | cost | lat(ms) | ...
-                std::vector<std::string> fields;
-                std::istringstream line_stream(line);
-                std::string field;
+                // Skip non-data rows
+                if (line.find("Tailscale") != std::string::npos || line.find("Peer") != std::string::npos)
+                    continue;
 
-                while (std::getline(line_stream, field, '|'))
+                std::istringstream ls(line);
+                std::string ip;
+                std::string hostname;
+                if (!(ls >> ip >> hostname))
+                    continue;
+
+                // Simple IP guard
+                if (ip.find('.') == std::string::npos && ip.find(':') == std::string::npos)
+                    continue;
+
+                SimplePeerInfo peer;
+
+                int len = MultiByteToWideChar(CP_UTF8, 0, hostname.c_str(), -1, NULL, 0);
+                if (len > 0)
                 {
-                    // Trim whitespace
-                    size_t start = field.find_first_not_of(" \t\r\n");
-                    size_t end = field.find_last_not_of(" \t\r\n");
-                    if (start != std::string::npos && end != std::string::npos)
-                        fields.push_back(field.substr(start, end - start + 1));
-                    else
-                        fields.push_back("");
+                    std::vector<wchar_t> buf(len);
+                    MultiByteToWideChar(CP_UTF8, 0, hostname.c_str(), -1, buf.data(), len);
+                    peer.hostname = buf.data();
                 }
 
-                // Skip first empty field (before first |)
-                if (!fields.empty() && fields[0].empty())
-                    fields.erase(fields.begin());
-
-                if (fields.size() >= 4)
+                len = MultiByteToWideChar(CP_UTF8, 0, ip.c_str(), -1, NULL, 0);
+                if (len > 0)
                 {
-                    DEBUG_LOG_INFO(L"Parsing line %d, fields count: %d", line_num, fields.size());
-
-                    // Field 0: ipv4 (may be empty for continuation rows)
-                    if (!fields[0].empty() && fields[0] != "-")
-                    {
-                        current_ip = fields[0];
-                        // Extract IP without CIDR
-                        size_t slash_pos = current_ip.find('/');
-                        if (slash_pos != std::string::npos)
-                            current_ip = current_ip.substr(0, slash_pos);
-
-                        DEBUG_LOG_INFO(L"  IP updated: %S", current_ip.c_str());
-                    }
-
-                    // Field 1: hostname
-                    std::string hostname = fields[1];
-                    if (!hostname.empty() && hostname != "-")
-                    {
-                        current_hostname = hostname;
-                        DEBUG_LOG_INFO(L"  Hostname updated: %S", current_hostname.c_str());
-                    }
-
-                    // Field 2: cost (Local, p2p, relay, etc.)
-                    std::string cost = fields[2];
-                    DEBUG_LOG_INFO(L"  Cost: %S", cost.c_str());
-
-                    // Field 3: latency
-                    std::string latency_str = fields[3];
-
-                    // Skip local peer and empty hostnames
-                    if (cost == "Local" || current_hostname.empty())
-                    {
-                        DEBUG_LOG_INFO(L"  Skipped (Local or empty hostname)");
-                        continue;
-                    }
-
-                    // Only add peers with valid IP and hostname
-                    if (!current_ip.empty() && !current_hostname.empty())
-                    {
-                        SimplePeerInfo peer;
-
-                        // Convert hostname to wide string
-                        int len = MultiByteToWideChar(CP_UTF8, 0, current_hostname.c_str(), -1, NULL, 0);
-                        if (len > 0)
-                        {
-                            std::vector<wchar_t> buf(len);
-                            MultiByteToWideChar(CP_UTF8, 0, current_hostname.c_str(), -1, buf.data(), len);
-                            peer.hostname = buf.data();
-                        }
-
-                        // Convert IP to wide string
-                        len = MultiByteToWideChar(CP_UTF8, 0, current_ip.c_str(), -1, NULL, 0);
-                        if (len > 0)
-                        {
-                            std::vector<wchar_t> buf(len);
-                            MultiByteToWideChar(CP_UTF8, 0, current_ip.c_str(), -1, buf.data(), len);
-                            peer.virtual_ip = buf.data();
-                        }
-
-                        // Convert cost to wide string
-                        len = MultiByteToWideChar(CP_UTF8, 0, cost.c_str(), -1, NULL, 0);
-                        if (len > 0)
-                        {
-                            std::vector<wchar_t> buf(len);
-                            MultiByteToWideChar(CP_UTF8, 0, cost.c_str(), -1, buf.data(), len);
-                            peer.cost = buf.data();
-                        }
-
-                        // Parse tunnel latency
-                        peer.tunnel_latency_ms = -1;
-                        if (!latency_str.empty() && latency_str != "-")
-                        {
-                            try {
-                                peer.tunnel_latency_ms = static_cast<int>(std::stof(latency_str));
-                            } catch (...) {
-                                peer.tunnel_latency_ms = -1;
-                            }
-                        }
-
-                        // Initialize ping latency (will be measured separately)
-                        peer.ping_latency_ms = -1;
-
-                        temp_peer_list.push_back(peer);
-                        DEBUG_LOG_INFO(L"Added peer: %s (%s) cost=%s lat=%dms",
-                                      peer.hostname.c_str(), peer.virtual_ip.c_str(),
-                                      peer.cost.c_str(), peer.tunnel_latency_ms);
-                    }
+                    std::vector<wchar_t> buf(len);
+                    MultiByteToWideChar(CP_UTF8, 0, ip.c_str(), -1, buf.data(), len);
+                    peer.virtual_ip = buf.data();
                 }
+
+                peer.cost = L"tailnet";
+                peer.tunnel_latency_ms = -1;
+                peer.ping_latency_ms = -1;
+                temp_peer_list.push_back(peer);
             }
         }
 
-        // Atomically replace the peer list to avoid flickering
+        // Atomically replace
         peer_list_ = std::move(temp_peer_list);
-
-        DEBUG_LOG_INFO(L"Parsed %d peers from CLI output", peer_list_.size());
+        DEBUG_LOG_INFO(L"Parsed %d peers from tailscale status output", peer_list_.size());
     }
     else
     {
         CloseHandle(hWritePipe);
         DEBUG_LOG_ERROR(L"CreateProcess failed: %d", GetLastError());
+        peer_list_.clear();
     }
 
     CloseHandle(hReadPipe);
