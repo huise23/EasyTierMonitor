@@ -69,15 +69,7 @@ const wchar_t* CPluginItem::GetItemValueText() const
     std::wstringstream ss;
     ss << display_hostname << L" | " << peer.cost << L" | ";
 
-    // Tunnel latency
-    if (peer.tunnel_latency_ms >= 0)
-        ss << peer.tunnel_latency_ms << L"ms";
-    else
-        ss << L"-";
-
-    ss << L" | ";
-
-    // Ping latency
+    // Actual ping latency
     if (peer.ping_latency_ms >= 0)
         ss << peer.ping_latency_ms << L"ms";
     else
@@ -89,7 +81,7 @@ const wchar_t* CPluginItem::GetItemValueText() const
 
 const wchar_t* CPluginItem::GetItemValueSampleText() const
 {
-    return L"_HostName | p2p | 99ms | 99ms";
+    return L"ct104 | direct | 99ms";
 }
 
 bool CPluginItem::IsCustomDraw() const

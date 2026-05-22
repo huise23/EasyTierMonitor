@@ -12,8 +12,17 @@ struct SimplePeerInfo
     std::wstring hostname;
     std::wstring virtual_ip;
     std::wstring cost;          // p2p, relay, etc.
+    bool is_active;             // active in tailscale status
+    bool is_offline;            // offline in tailscale status
     int tunnel_latency_ms;      // from CLI
     int ping_latency_ms;        // from ICMP ping
+
+    SimplePeerInfo()
+        : is_active(false)
+        , is_offline(false)
+        , tunnel_latency_ms(-1)
+        , ping_latency_ms(-1)
+    {}
 };
 
 // Plugin Class (implements ITMPlugin)

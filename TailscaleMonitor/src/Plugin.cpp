@@ -7,6 +7,33 @@
 #include <Windows.h>
 #include <sstream>
 
+namespace
+{
+std::string TrimAnsi(const std::string& value)
+{
+    const char* whitespace = " \t\r\n";
+    size_t start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos)
+        return "";
+    size_t end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
+}
+
+std::wstring Utf8ToWide(const std::string& value)
+{
+    if (value.empty())
+        return L"";
+
+    int len = MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, NULL, 0);
+    if (len <= 0)
+        return L"";
+
+    std::vector<wchar_t> buffer(len);
+    MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, buffer.data(), len);
+    return buffer.data();
+}
+} // namespace
+
 // Static member definition
 CTailscalePlugin* CTailscalePlugin::m_instance = nullptr;
 
@@ -152,51 +179,53 @@ void CTailscalePlugin::UpdatePeerList()
 
         if (!output.empty())
         {
-            // Minimal parser for `tailscale status` text:
-            // Keep only rows that start with a Tailscale IP and host, then map as peer list.
             std::istringstream iss(output);
             std::string line;
             while (std::getline(iss, line))
             {
+                line = TrimAnsi(line);
                 if (line.empty())
-                    continue;
-
-                // Skip non-data rows
-                if (line.find("Tailscale") != std::string::npos || line.find("Peer") != std::string::npos)
                     continue;
 
                 std::istringstream ls(line);
                 std::string ip;
-                std::string hostname;
-                if (!(ls >> ip >> hostname))
+                std::string device_name;
+                std::string login_name;
+                std::string os_name;
+
+                if (!(ls >> ip >> device_name >> login_name >> os_name))
                     continue;
 
-                // Simple IP guard
-                if (ip.find('.') == std::string::npos && ip.find(':') == std::string::npos)
+                std::string detail;
+                std::getline(ls, detail);
+                detail = TrimAnsi(detail);
+
+                // Exclude local/self row and non-peer rows.
+                if (detail == "-")
                     continue;
+
+                // Parse state from the detail field.
+                std::string state = "unknown";
+                bool is_offline = (detail.find("offline") != std::string::npos);
+                bool is_active = (detail.find("active") != std::string::npos);
+                if (is_offline)
+                    state = "offline";
+                else if (detail.find("direct") != std::string::npos)
+                    state = "direct";
+                else if (detail.find("relay") != std::string::npos)
+                    state = "relay";
+                else if (is_active)
+                    state = "active";
 
                 SimplePeerInfo peer;
-
-                int len = MultiByteToWideChar(CP_UTF8, 0, hostname.c_str(), -1, NULL, 0);
-                if (len > 0)
-                {
-                    std::vector<wchar_t> buf(len);
-                    MultiByteToWideChar(CP_UTF8, 0, hostname.c_str(), -1, buf.data(), len);
-                    peer.hostname = buf.data();
-                }
-
-                len = MultiByteToWideChar(CP_UTF8, 0, ip.c_str(), -1, NULL, 0);
-                if (len > 0)
-                {
-                    std::vector<wchar_t> buf(len);
-                    MultiByteToWideChar(CP_UTF8, 0, ip.c_str(), -1, buf.data(), len);
-                    peer.virtual_ip = buf.data();
-                }
-
-                peer.cost = L"tailnet";
+                peer.hostname = Utf8ToWide(device_name);
+                peer.virtual_ip = Utf8ToWide(ip);
+                peer.cost = Utf8ToWide(state);
+                peer.is_active = is_active;
+                peer.is_offline = is_offline;
                 peer.tunnel_latency_ms = -1;
                 peer.ping_latency_ms = -1;
-                temp_peer_list.push_back(peer);
+                temp_peer_list.push_back(std::move(peer));
             }
         }
 
@@ -233,10 +262,19 @@ void CTailscalePlugin::DataRequired()
     // Update ping latency for current peer only (to avoid blocking)
     if (!peer_list_.empty() && current_peer_index_ >= 0 && current_peer_index_ < (int)peer_list_.size())
     {
-        DEBUG_LOG_INFO(L"Pinging peer %d: %s", current_peer_index_, peer_list_[current_peer_index_].virtual_ip.c_str());
-        int ping_result = PingHost(peer_list_[current_peer_index_].virtual_ip);
-        peer_list_[current_peer_index_].ping_latency_ms = ping_result;
-        DEBUG_LOG_INFO(L"Ping result: %d ms", ping_result);
+        auto& current_peer = peer_list_[current_peer_index_];
+        if (current_peer.cost == L"offline")
+        {
+            current_peer.ping_latency_ms = -1;
+            DEBUG_LOG_INFO(L"Peer is offline, skip ping: %s", current_peer.hostname.c_str());
+        }
+        else
+        {
+            DEBUG_LOG_INFO(L"Pinging peer %d: %s", current_peer_index_, current_peer.virtual_ip.c_str());
+            int ping_result = PingHost(current_peer.virtual_ip);
+            current_peer.ping_latency_ms = ping_result;
+            DEBUG_LOG_INFO(L"Ping result: %d ms", ping_result);
+        }
     }
 
     // Advance to next peer for rotation
