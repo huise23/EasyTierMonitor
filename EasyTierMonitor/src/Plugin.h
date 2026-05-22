@@ -42,6 +42,8 @@ public:
     int GetSelectedPeerIndex() const { return selected_peer_index_; }
     bool IsAutoRotate() const { return auto_rotate_; }
     void SetAutoRotate(bool enable) { auto_rotate_ = enable; }
+    bool IsDebugLogEnabled() const { return debug_log_enabled_; }
+    void SetDebugLogEnabled(bool enable);
     void SetSelectedPeerHostname(const std::wstring& hostname) { selected_peer_hostname_ = hostname; }
     void SaveConfig();
 
@@ -65,6 +67,7 @@ private:
     int current_peer_index_;
     int selected_peer_index_;   // -1 for auto-rotate, >= 0 for fixed peer
     bool auto_rotate_;           // true for auto-rotate mode
+    bool debug_log_enabled_;     // enable debug log output
     std::wstring selected_peer_hostname_;  // hostname of selected peer for persistence
 
     // Components

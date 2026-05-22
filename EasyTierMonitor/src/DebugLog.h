@@ -9,9 +9,27 @@
 class CDebugLog
 {
 public:
+    static void SetEnabled(bool enabled)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        enabled_ = enabled;
+        if (!enabled_ && log_file_.is_open())
+        {
+            log_file_.close();
+        }
+    }
+
+    static bool IsEnabled()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return enabled_;
+    }
+
     static void Log(const wchar_t* function, int line, const wchar_t* format, ...)
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (!enabled_)
+            return;
 
         // Get current time
         time_t now = time(nullptr);
@@ -60,6 +78,7 @@ public:
 private:
     static std::mutex mutex_;
     static std::wofstream log_file_;
+    static bool enabled_;
 };
 
 // Convenience macros

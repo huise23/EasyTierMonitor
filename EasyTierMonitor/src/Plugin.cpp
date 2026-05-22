@@ -28,15 +28,19 @@ CEasyTierPlugin::CEasyTierPlugin()
     : current_peer_index_(0)
     , selected_peer_index_(-1)  // -1 means auto-rotate
     , auto_rotate_(true)
+    , debug_log_enabled_(true)
 {
-    // Clear log file on startup
-    std::wofstream clear_log(L"easytier_monitor_debug.log", std::ios::trunc);
-    clear_log.close();
-
-    DEBUG_LOG_INFO(L"Plugin initializing...");
-
     // Load configuration
     LoadConfig();
+
+    // Apply debug log setting loaded from config.
+    CDebugLog::SetEnabled(debug_log_enabled_);
+    if (debug_log_enabled_)
+    {
+        std::wofstream clear_log(L"easytier_monitor_debug.log", std::ios::trunc);
+        clear_log.close();
+        DEBUG_LOG_INFO(L"Plugin initializing...");
+    }
 
     // Find easytier-cli.exe
     cli_path_ = FindEasyTierCli();
@@ -59,6 +63,13 @@ CEasyTierPlugin::CEasyTierPlugin()
 
 CEasyTierPlugin::~CEasyTierPlugin()
 {
+    CDebugLog::Close();
+}
+
+void CEasyTierPlugin::SetDebugLogEnabled(bool enable)
+{
+    debug_log_enabled_ = enable;
+    CDebugLog::SetEnabled(enable);
 }
 
 std::wstring CEasyTierPlugin::FindEasyTierCli()
@@ -502,14 +513,16 @@ void CEasyTierPlugin::LoadConfig()
             {
                 auto_rotate_ = (line.substr(12) == L"1");
             }
+            else if (line.find(L"debug_log=") == 0)
+            {
+                debug_log_enabled_ = (line.substr(10) == L"1");
+            }
             else if (line.find(L"selected_peer_hostname=") == 0)
             {
                 selected_peer_hostname_ = line.substr(23);
             }
         }
         config_file.close();
-        DEBUG_LOG_INFO(L"Config loaded: auto_rotate=%d, selected_peer_hostname=%s",
-                      auto_rotate_, selected_peer_hostname_.c_str());
     }
 }
 
@@ -519,6 +532,7 @@ void CEasyTierPlugin::SaveConfig()
     if (config_file.is_open())
     {
         config_file << L"auto_rotate=" << (auto_rotate_ ? L"1" : L"0") << std::endl;
+        config_file << L"debug_log=" << (debug_log_enabled_ ? L"1" : L"0") << std::endl;
         config_file << L"selected_peer_hostname=" << selected_peer_hostname_ << std::endl;
         config_file.close();
         DEBUG_LOG_INFO(L"Config saved: auto_rotate=%d, selected_peer_hostname=%s",
