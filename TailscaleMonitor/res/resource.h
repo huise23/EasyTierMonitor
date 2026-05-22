@@ -25,6 +25,7 @@
 #define IDC_STATIC_COOLDOWN             119
 #define IDC_STATIC_HISTORY              120
 #define IDC_STATIC_CLI_PATH             121
+#define IDC_ENABLE_DEBUG_LOG_CHECK      122
 #define IDC_HISTORY_LIST                201
 #define IDC_DETAILS_EDIT                202
 #define IDC_EXPORT_BUTTON               203

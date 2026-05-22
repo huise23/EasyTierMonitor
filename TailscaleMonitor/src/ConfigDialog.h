@@ -28,6 +28,7 @@ private:
     // Control variables
     CComboBox peer_combo_;
     CButton auto_rotate_check_;
+    CButton debug_log_check_;
 
     // Plugin reference
     CTailscalePlugin* plugin_;

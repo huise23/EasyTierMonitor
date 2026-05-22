@@ -19,6 +19,7 @@ void CConfigDialog::DoDataExchange(CDataExchange* pDX)
     CDialogEx::DoDataExchange(pDX);
     DDX_Control(pDX, IDC_PEER_COMBO, peer_combo_);
     DDX_Control(pDX, IDC_ENABLE_NOTIFICATION_CHECK, auto_rotate_check_);
+    DDX_Control(pDX, IDC_ENABLE_DEBUG_LOG_CHECK, debug_log_check_);
 }
 
 BEGIN_MESSAGE_MAP(CConfigDialog, CDialogEx)
@@ -37,6 +38,7 @@ BOOL CConfigDialog::OnInitDialog()
 
     // Set auto-rotate checkbox (reuse notification check control)
     auto_rotate_check_.SetCheck(plugin_->IsAutoRotate() ? BST_CHECKED : BST_UNCHECKED);
+    debug_log_check_.SetCheck(plugin_->IsDebugLogEnabled() ? BST_CHECKED : BST_UNCHECKED);
 
     // Set current selection based on hostname
     if (!plugin_->IsAutoRotate())
@@ -105,6 +107,8 @@ void CConfigDialog::OnOK()
             plugin_->SetSelectedPeerHostname(peer_list[peer_index].hostname);
         }
     }
+
+    plugin_->SetDebugLogEnabled(debug_log_check_.GetCheck() == BST_CHECKED);
 
     // Save configuration
     plugin_->SaveConfig();
